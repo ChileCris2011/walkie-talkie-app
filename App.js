@@ -1,4 +1,4 @@
-// app/(tabs)/index.tsx
+// App.js - Walkie-Talkie para Android
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
@@ -9,20 +9,23 @@ import {
   Alert,
   Platform,
   Vibration,
+  AppState,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import * as FileSystemLegacy from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
 
-// Usar FileSystem legacy para compatibilidad
-const FileSystem = FileSystemLegacy;
-
-// ⚠️ CONFIGURA TU SERVIDOR AQUÍ
-// Para desarrollo local, reemplaza con tu IP local (ej: http://192.168.1.100:3000)
-// Para producción, usa tu URL de servidor (ej: https://tu-servidor.railway.app)
-const SERVER_URL = 'https://walkie-server-ov27.onrender.com'; // Cambia esto según tu configuración
+// Configurar notificaciones
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const CHANNELS = [
   { id: '1', name: 'Canal 1', frequency: '462.5625 MHz' },
@@ -32,21 +35,17 @@ const CHANNELS = [
   { id: '5', name: 'Canal 5', frequency: '462.6625 MHz' },
 ];
 
+// Servicio de Audio
 class AudioService {
-  recording: Audio.Recording | null = null;
-  sound: Audio.Sound | null = null;
-  beepSound: Audio.Sound | null = null;
-  isRecording: boolean = false;
-  recordingInterval: any = null;
-  onAudioChunk: ((chunk: string) => void) | null = null;
+  constructor() {
+    this.recording = null;
+    this.sound = null;
+    this.isRecording = false;
+  }
 
   async initialize() {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
-        return false;
-      }
-
+      await Audio.requestPermissionsAsync();
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -54,17 +53,6 @@ class AudioService {
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
       });
-
-      // Pre-cargar sonidos para móvil si es necesario
-      if (Platform.OS !== 'web') {
-        try {
-          // Intentar cargar un sonido simple
-          // Como no tenemos archivos de audio, usaremos solo vibración en móvil
-        } catch (e) {
-          console.log('Beep sounds not available');
-        }
-      }
-
       return true;
     } catch (error) {
       console.error('Error initializing audio:', error);
@@ -72,26 +60,24 @@ class AudioService {
     }
   }
 
-  async startRecording(onChunk?: (chunk: string) => void) {
+  async startRecording(onAudioData) {
     try {
       if (this.isRecording) return false;
 
-      this.onAudioChunk = onChunk || null;
       this.recording = new Audio.Recording();
-      
       await this.recording.prepareToRecordAsync({
         android: {
           extension: '.m4a',
-          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
           sampleRate: 44100,
           numberOfChannels: 1,
           bitRate: 128000,
         },
         ios: {
           extension: '.m4a',
-          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-          audioQuality: Audio.IOSAudioQuality.HIGH,
+          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
           sampleRate: 44100,
           numberOfChannels: 1,
           bitRate: 128000,
@@ -99,21 +85,10 @@ class AudioService {
           linearPCMIsBigEndian: false,
           linearPCMIsFloat: false,
         },
-        web: {
-          mimeType: 'audio/webm',
-          bitsPerSecond: 128000,
-        }
       });
 
       await this.recording.startAsync();
       this.isRecording = true;
-
-      // En web, podemos hacer streaming de chunks
-      if (Platform.OS === 'web' && onChunk) {
-        // Nota: El streaming real de chunks en web requiere MediaRecorder API
-        // Por ahora solo enviamos al final, pero con menor delay
-      }
-
       return true;
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -124,11 +99,6 @@ class AudioService {
   async stopRecording() {
     try {
       if (!this.isRecording || !this.recording) return null;
-
-      if (this.recordingInterval) {
-        clearInterval(this.recordingInterval);
-        this.recordingInterval = null;
-      }
 
       await this.recording.stopAndUnloadAsync();
       const uri = this.recording.getURI();
@@ -141,7 +111,7 @@ class AudioService {
     }
   }
 
-  async playAudio(uri: string) {
+  async playAudio(uri) {
     try {
       if (this.sound) {
         await this.sound.unloadAsync();
@@ -149,7 +119,7 @@ class AudioService {
 
       const { sound } = await Audio.Sound.createAsync(
         { uri },
-        { shouldPlay: true, volume: 1.0 }
+        { shouldPlay: true }
       );
       this.sound = sound;
       await sound.playAsync();
@@ -158,62 +128,15 @@ class AudioService {
     }
   }
 
-  async getBase64Audio(uri: string) {
+  async playTone(frequency = 800, duration = 100) {
     try {
-      // Detectar plataforma
-      if (Platform.OS === 'web') {
-        // En web, el URI es un blob URL, necesitamos convertirlo
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        
-        return new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            resolve(base64);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } else {
-        // En móvil, usar FileSystem legacy
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        return base64;
-      }
+      const { sound } = await Audio.Sound.createAsync(
+        require('./assets/beep.mp3'), // Necesitarás agregar un archivo de sonido
+        { shouldPlay: true, volume: 0.5 }
+      );
+      setTimeout(() => sound.unloadAsync(), duration);
     } catch (error) {
-      console.error('Error reading audio file:', error);
-      return null;
-    }
-  }
-
-  // Generar tono sintético (beep) - Solo web
-  playBeep(frequency: number = 800, duration: number = 100) {
-    if (Platform.OS === 'web') {
-      try {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.value = frequency;
-        oscillator.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration / 1000);
-      } catch (error) {
-        console.log('Beep not available:', error);
-      }
-    } else {
-      // En móvil, usar un sonido corto con expo-av
-      // Por ahora solo hacemos vibración
-      console.log('Beep on mobile - using vibration instead');
+      console.log('Tone playback not available');
     }
   }
 
@@ -224,125 +147,81 @@ class AudioService {
     if (this.sound) {
       this.sound.unloadAsync();
     }
-    if (this.beepSound) {
-      this.beepSound.unloadAsync();
-    }
-    if (this.recordingInterval) {
-      clearInterval(this.recordingInterval);
-    }
   }
 }
 
-// Servicio de conexión Socket.io
+// Servicio de conexión (simulado - reemplazar con servidor real)
 class ConnectionService {
-  socket: any = null;
-  isConnected: boolean = false;
-  serverUrl: string = '';
-  listeners: { [key: string]: (data: any) => void } = {};
-
-  connect(serverUrl: string) {
-    this.serverUrl = serverUrl;
-    
-    console.log(`🔌 Connecting to ${serverUrl}...`);
-    
-    this.socket = io(serverUrl, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-    });
-
-    this.socket.on('connect', () => {
-      console.log('✅ Connected to server');
-      this.isConnected = true;
-      this.emit('connection-status', true);
-    });
-
-    this.socket.on('disconnect', () => {
-      console.log('❌ Disconnected from server');
-      this.isConnected = false;
-      this.emit('connection-status', false);
-    });
-
-    this.socket.on('connect_error', (error: any) => {
-      console.error('Connection error:', error.message);
-      this.emit('connection-error', error.message);
-    });
-
-    this.socket.on('user-joined', (userId: string) => {
-      console.log(`👤 User joined: ${userId}`);
-      this.emit('user-joined', userId);
-    });
-
-    this.socket.on('user-left', (userId: string) => {
-      console.log(`👋 User left: ${userId}`);
-      this.emit('user-left', userId);
-    });
-
-    this.socket.on('channel-users', (users: string[]) => {
-      console.log(`👥 Channel users: ${users.length}`);
-      this.emit('channel-users', users);
-    });
-
-    this.socket.on('audio-received', (data: any) => {
-      console.log(`🎧 Audio received from ${data.userId}`);
-      this.emit('audio-received', data);
-    });
-
-    this.socket.on('transmission-start', (data: any) => {
-      this.emit('transmission-start', data);
-    });
-
-    this.socket.on('transmission-end', (data: any) => {
-      this.emit('transmission-end', data);
-    });
-
-    return true;
+  constructor() {
+    this.socket = null;
+    this.channelId = null;
+    this.userId = null;
+    this.listeners = {};
   }
 
-  joinChannel(channelId: string, userId: string) {
-    if (!this.socket || !this.isConnected) return false;
-    
-    console.log(`📡 Joining channel ${channelId} as ${userId}`);
-    this.socket.emit('join-channel', { channelId, userId });
-    return true;
+  connect(serverUrl = 'http://localhost:3000') {
+    try {
+      this.socket = io(serverUrl, {
+        transports: ['websocket'],
+        reconnection: true,
+      });
+
+      this.socket.on('connect', () => {
+        console.log('Connected to server');
+        this.emit('connected', true);
+      });
+
+      this.socket.on('user-joined', (userId) => {
+        this.emit('user-joined', userId);
+      });
+
+      this.socket.on('user-left', (userId) => {
+        this.emit('user-left', userId);
+      });
+
+      this.socket.on('audio-message', (data) => {
+        this.emit('audio-received', data);
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Connection error:', error);
+      return false;
+    }
   }
 
-  leaveChannel(channelId: string, userId: string) {
-    if (!this.socket) return;
-    
-    console.log(`👋 Leaving channel ${channelId}`);
-    this.socket.emit('leave-channel', { channelId, userId });
+  joinChannel(channelId, userId) {
+    this.channelId = channelId;
+    this.userId = userId;
+    if (this.socket) {
+      this.socket.emit('join-channel', { channelId, userId });
+    }
   }
 
-  sendAudioData(channelId: string, userId: string, audioData: string) {
-    if (!this.socket || !this.isConnected) return false;
-    
-    console.log(`📤 Sending audio data (${audioData.length} bytes)`);
-    this.socket.emit('audio-data', {
-      channelId,
-      userId,
-      audioData,
-      timestamp: Date.now(),
-    });
-    return true;
+  leaveChannel() {
+    if (this.socket && this.channelId) {
+      this.socket.emit('leave-channel', { channelId: this.channelId, userId: this.userId });
+    }
+    this.channelId = null;
   }
 
-  notifyTransmissionStart(channelId: string, userId: string) {
-    if (!this.socket) return;
-    this.socket.emit('transmission-start', { channelId, userId });
+  sendAudio(audioUri) {
+    if (this.socket && this.channelId) {
+      // En producción, sube el audio a un servidor y envía la URL
+      this.socket.emit('audio-message', {
+        channelId: this.channelId,
+        userId: this.userId,
+        audioUri: audioUri,
+        timestamp: Date.now(),
+      });
+    }
   }
 
-  notifyTransmissionEnd(channelId: string, userId: string) {
-    if (!this.socket) return;
-    this.socket.emit('transmission-end', { channelId, userId });
-  }
-
-  on(event: string, callback: (data: any) => void) {
+  on(event, callback) {
     this.listeners[event] = callback;
   }
 
-  emit(event: string, data: any) {
+  emit(event, data) {
     if (this.listeners[event]) {
       this.listeners[event](data);
     }
@@ -351,31 +230,30 @@ class ConnectionService {
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
-      this.isConnected = false;
     }
   }
 }
 
-export default function WalkieTalkieScreen() {
+export default function App() {
   const [userId] = useState(`user_${Math.random().toString(36).substr(2, 9)}`);
-  const [currentChannel, setCurrentChannel] = useState<typeof CHANNELS[0] | null>(null);
+  const [currentChannel, setCurrentChannel] = useState(null);
   const [isPushing, setIsPushing] = useState(false);
   const [dndMode, setDndMode] = useState(false);
   const [muteReceive, setMuteReceive] = useState(false);
   const [muteSend, setMuteSend] = useState(false);
-  const [channelUsers, setChannelUsers] = useState<string[]>([]);
-  const [recentMessages, setRecentMessages] = useState<any[]>([]);
+  const [channelUsers, setChannelUsers] = useState([]);
+  const [recentMessages, setRecentMessages] = useState([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [transmissionTime, setTransmissionTime] = useState(0);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const audioService = useRef(new AudioService());
   const connectionService = useRef(new ConnectionService());
-  const transmissionTimer = useRef<NodeJS.Timeout | null>(null);
+  const transmissionTimer = useRef(null);
 
+  // Inicializar
   useEffect(() => {
     initializeApp();
+    setupNotifications();
 
     return () => {
       audioService.current.cleanup();
@@ -385,157 +263,56 @@ export default function WalkieTalkieScreen() {
   }, []);
 
   const initializeApp = async () => {
-    // Inicializar audio
-    const audioInit = await audioService.current.initialize();
-    setIsInitialized(audioInit);
+    const initialized = await audioService.current.initialize();
+    setIsInitialized(initialized);
 
-    if (!audioInit) {
-      Alert.alert(
-        'Permisos Requeridos',
-        'Esta app necesita acceso al micrófono para funcionar.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // Conectar al servidor
-    try {
-      connectionService.current.connect(SERVER_URL);
-
+    if (initialized) {
+      // Conectar al servidor (en desarrollo, esto fallará sin servidor)
+      // connectionService.current.connect('https://walkie-server.railway.app/');
+      
       // Configurar listeners
-      connectionService.current.on('connection-status', (connected: boolean) => {
-        setIsConnected(connected);
-        if (connected) {
-          setConnectionError(null);
-        }
+      connectionService.current.on('user-joined', (userId) => {
+        setChannelUsers((prev) => [...prev, userId]);
       });
 
-      connectionService.current.on('connection-error', (error: string) => {
-        setConnectionError(error);
-        console.error('Connection error:', error);
+      connectionService.current.on('user-left', (userId) => {
+        setChannelUsers((prev) => prev.filter((u) => u !== userId));
       });
 
-      connectionService.current.on('user-joined', (joinedUserId: string) => {
-        setChannelUsers((prev) => [...prev, joinedUserId]);
-        playSound('join');
-      });
-
-      connectionService.current.on('user-left', (leftUserId: string) => {
-        setChannelUsers((prev) => prev.filter((u) => u !== leftUserId));
-      });
-
-      connectionService.current.on('channel-users', (users: string[]) => {
-        setChannelUsers(users);
-      });
-
-      connectionService.current.on('audio-received', async (data: any) => {
+      connectionService.current.on('audio-received', async (data) => {
         if (!dndMode && !muteReceive) {
           addMessage(data.userId);
           playSound('incoming');
-
-          // Reproducir audio recibido INMEDIATAMENTE
-          if (data.audioData) {
-            // No usar await aquí para que sea más rápido
-            (async () => {
-              try {
-                if (Platform.OS === 'web') {
-                  // En web, convertir base64 a blob y reproducir
-                  const byteCharacters = atob(data.audioData);
-                  const byteNumbers = new Array(byteCharacters.length);
-                  for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                  }
-                  const byteArray = new Uint8Array(byteNumbers);
-                  const blob = new Blob([byteArray], { type: 'audio/webm' });
-                  const audioUrl = URL.createObjectURL(blob);
-                  
-                  await audioService.current.playAudio(audioUrl);
-                  
-                  // Limpiar URL después de reproducir
-                  setTimeout(() => URL.revokeObjectURL(audioUrl), 5000);
-                } else {
-                  // En móvil, convertir base64 a archivo temporal y reproducir
-                  const tempUri = `${FileSystem.cacheDirectory}temp_audio_${Date.now()}.m4a`;
-                  await FileSystem.writeAsStringAsync(tempUri, data.audioData, {
-                    encoding: FileSystem.EncodingType.Base64,
-                  });
-                  await audioService.current.playAudio(tempUri);
-                }
-              } catch (error) {
-                console.error('Error playing received audio:', error);
-              }
-            })();
+          // Reproducir audio recibido
+          if (data.audioUri) {
+            await audioService.current.playAudio(data.audioUri);
           }
         }
       });
-
-      connectionService.current.on('transmission-start', (data: any) => {
-        console.log(`🔴 ${data.userId} started transmitting`);
-      });
-
-      connectionService.current.on('transmission-end', (data: any) => {
-        console.log(`⏹️ ${data.userId} stopped transmitting`);
-      });
-
-    } catch (error) {
-      console.error('Failed to connect:', error);
-      setConnectionError('No se pudo conectar al servidor');
     }
   };
 
-  const playSound = (type: string) => {
+  const setupNotifications = async () => {
+    await Notifications.requestPermissionsAsync();
+  };
+
+  const playSound = (type) => {
     if (dndMode && type === 'incoming') return;
 
-    // Tonos para web
-    if (Platform.OS === 'web') {
-      switch(type) {
-        case 'push':
-          audioService.current.playBeep(800, 100);
-          break;
-        case 'release':
-          audioService.current.playBeep(600, 80);
-          break;
-        case 'incoming':
-          audioService.current.playBeep(1000, 50);
-          setTimeout(() => audioService.current.playBeep(1200, 50), 100);
-          break;
-        case 'join':
-          audioService.current.playBeep(600, 100);
-          setTimeout(() => audioService.current.playBeep(900, 100), 150);
-          break;
-        case 'leave':
-          audioService.current.playBeep(900, 100);
-          setTimeout(() => audioService.current.playBeep(600, 100), 150);
-          break;
-      }
+    // Vibración
+    if (type === 'push') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    } else if (type === 'release') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } else if (type === 'incoming') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Vibration.vibrate([100, 50, 100]);
     }
 
-    // Vibración y feedback háptico para móvil
-    if (Platform.OS !== 'web') {
-      try {
-        if (type === 'push') {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          Vibration.vibrate(100);
-        } else if (type === 'release') {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          Vibration.vibrate(50);
-        } else if (type === 'incoming') {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Vibration.vibrate([100, 50, 100]);
-        } else if (type === 'join') {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          Vibration.vibrate([100, 50, 100]);
-        } else if (type === 'leave') {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          Vibration.vibrate([100, 50]);
-        }
-      } catch (error) {
-        console.log('Haptic feedback not available');
-      }
-    }
+    audioService.current.playTone();
   };
 
-  const addMessage = (fromUserId: string) => {
+  const addMessage = (fromUserId) => {
     const msg = {
       userId: fromUserId,
       timestamp: Date.now(),
@@ -544,7 +321,7 @@ export default function WalkieTalkieScreen() {
     setRecentMessages((prev) => [...prev, msg].slice(-10));
   };
 
-  const joinChannel = async (channel: typeof CHANNELS[0]) => {
+  const joinChannel = async (channel) => {
     if (!isInitialized) {
       Alert.alert(
         'Error',
@@ -553,16 +330,8 @@ export default function WalkieTalkieScreen() {
       return;
     }
 
-    if (!isConnected) {
-      Alert.alert(
-        'Sin Conexión',
-        'No estás conectado al servidor. Verifica tu conexión a internet y que el servidor esté corriendo.'
-      );
-      return;
-    }
-
     if (currentChannel) {
-      connectionService.current.leaveChannel(currentChannel.id, userId);
+      connectionService.current.leaveChannel();
     }
 
     setCurrentChannel(channel);
@@ -570,12 +339,13 @@ export default function WalkieTalkieScreen() {
     playSound('join');
     setRecentMessages([]);
     
-    await activateKeepAwakeAsync();
+    // Mantener pantalla activa
+    activateKeepAwakeAsync();
   };
 
   const leaveChannel = () => {
     if (currentChannel) {
-      connectionService.current.leaveChannel(currentChannel.id, userId);
+      connectionService.current.leaveChannel();
       setCurrentChannel(null);
       setChannelUsers([]);
       setRecentMessages([]);
@@ -593,9 +363,6 @@ export default function WalkieTalkieScreen() {
       setTransmissionTime(0);
       playSound('push');
 
-      // Notificar inicio de transmisión
-      connectionService.current.notifyTransmissionStart(currentChannel.id, userId);
-
       transmissionTimer.current = setInterval(() => {
         setTransmissionTime((prev) => prev + 0.1);
       }, 100);
@@ -607,34 +374,16 @@ export default function WalkieTalkieScreen() {
   const handlePushEnd = async () => {
     if (!currentChannel || !isPushing) return;
 
-    // Parar grabación
     const audioUri = await audioService.current.stopRecording();
     setIsPushing(false);
     playSound('release');
 
     if (transmissionTimer.current) {
       clearInterval(transmissionTimer.current);
-      transmissionTimer.current = null;
     }
 
-    // Notificar fin de transmisión
-    connectionService.current.notifyTransmissionEnd(currentChannel.id, userId);
-
     if (audioUri) {
-      console.log('Audio recorded:', audioUri);
-      
-      // Convertir y enviar audio inmediatamente (sin esperar)
-      (async () => {
-        try {
-          const base64Audio = await audioService.current.getBase64Audio(audioUri);
-          if (base64Audio) {
-            connectionService.current.sendAudioData(currentChannel.id, userId, base64Audio);
-            console.log('✅ Audio sent successfully');
-          }
-        } catch (error) {
-          console.error('Error sending audio:', error);
-        }
-      })();
+      connectionService.current.sendAudio(audioUri);
     }
   };
 
@@ -645,7 +394,7 @@ export default function WalkieTalkieScreen() {
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Walkie-Talkie</Text>
           <Text style={styles.headerSubtitle}>
-            {isConnected ? '🟢 Conectado' : connectionError ? `🔴 ${connectionError}` : '🟡 Conectando...'}
+            {isInitialized ? 'Listo' : 'Inicializando...'}
           </Text>
         </View>
 
@@ -678,23 +427,6 @@ export default function WalkieTalkieScreen() {
         {!currentChannel ? (
           <View style={styles.channelList}>
             <Text style={styles.sectionTitle}>Selecciona un Canal</Text>
-            {!isInitialized && (
-              <View style={styles.warningBox}>
-                <Text style={styles.warningText}>
-                  ⚠️ Permisos de micrófono requeridos
-                </Text>
-              </View>
-            )}
-            {!isConnected && (
-              <View style={[styles.warningBox, { backgroundColor: '#ef4444' }]}>
-                <Text style={styles.warningText}>
-                  🔴 Sin conexión al servidor
-                </Text>
-                <Text style={[styles.warningText, { fontSize: 12, marginTop: 4 }]}>
-                  Verifica que el servidor esté corriendo en: {SERVER_URL}
-                </Text>
-              </View>
-            )}
             {CHANNELS.map((channel) => (
               <TouchableOpacity
                 key={channel.id}
@@ -876,17 +608,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginBottom: 16,
   },
-  warningBox: {
-    padding: 12,
-    backgroundColor: '#fbbf24',
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  warningText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   channelButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -951,6 +672,7 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
   },
   activityFeed: {
+    flex: 1,
     padding: 16,
     backgroundColor: '#1e293b33',
     borderRadius: 12,
@@ -966,6 +688,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emptyActivity: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 32,
@@ -1023,7 +746,7 @@ const styles = StyleSheet.create({
   transmissionTime: {
     fontSize: 14,
     color: '#94a3b8',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontFamily: 'monospace',
     marginBottom: 8,
   },
   pttButton: {
