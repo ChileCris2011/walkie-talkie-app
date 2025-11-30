@@ -15,17 +15,18 @@ La aplicación aún no ha sido lanzada, así que los pasos siguientes son para c
    ```
 
 2. Inicia la aplicación
-   2.1. Inicia el servidor
-   La aplicación necesita de un servidor (backend) para poder manejar las solicitudes y audio. Puedes iniciar uno local con el proyecto:
-   ```text
-   https://github.com/ChileCris2011/Walkie-Server/
-   ```
-   o usar el servidor público de Render
+   
+   2.1 Inicia el servidor  
+   La aplicación necesita de un servidor (backend) para poder manejar las solicitudes y audio. Puedes iniciar uno local con el proyecto [Walkie Server](https://github.com/ChileCris2011/Walkie-Server/) de mi GitHub, o usar el servidor público de Render
    ```text
    https://walkie-server-ov27.onrender.com
    ```
+   editando `/app/index.tsx` en:
+   ```tsx
+   24| const SERVER_URL = 'https://localhost:3000'; // Por defecto
+   ```
    
-   2.2. Inicia el la plaicación expo
+   2.2. Inicia la aplicación expo
    ```bash
    npx expo start
    ```
