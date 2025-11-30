@@ -5,6 +5,9 @@
 ## Cómo usar
 
 ### Desarrollo y pruebas
+
+La aplicación aún no ha sido lanzada, así que los pasos siguientes son para construir la aplicación
+
 1. Instala las dependencias
 
    ```bash
