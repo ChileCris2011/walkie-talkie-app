@@ -16,13 +16,12 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import io from 'socket.io-client';
 
-// Usar FileSystem legacy para compatibilidad
 const FileSystem = FileSystemLegacy;
 
-// ⚠️ CONFIGURA TU SERVIDOR AQUÍ
+// CONFIGURA TU SERVIDOR AQUÍ
 // Para desarrollo local, reemplaza con tu IP local (ej: http://192.168.1.100:3000)
 // Para producción, usa tu URL de servidor (ej: https://tu-servidor.railway.app)
-const SERVER_URL = 'https://walkie-server-ov27.onrender.com'; // Cambia esto según tu configuración
+const SERVER_URL = 'https://localhost:3000'; // Por defecto
 
 const CHANNELS = [
   { id: '1', name: 'Canal 1', frequency: '462.5625 MHz' },
@@ -55,11 +54,9 @@ class AudioService {
         playThroughEarpieceAndroid: false,
       });
 
-      // Pre-cargar sonidos para móvil si es necesario
       if (Platform.OS !== 'web') {
         try {
-          // Intentar cargar un sonido simple
-          // Como no tenemos archivos de audio, usaremos solo vibración en móvil
+          // Implementar sonidos en móvil...
         } catch (e) {
           console.log('Beep sounds not available');
         }
@@ -108,10 +105,8 @@ class AudioService {
       await this.recording.startAsync();
       this.isRecording = true;
 
-      // En web, podemos hacer streaming de chunks
       if (Platform.OS === 'web' && onChunk) {
-        // Nota: El streaming real de chunks en web requiere MediaRecorder API
-        // Por ahora solo enviamos al final, pero con menor delay
+        // Implementar sonido por partes...
       }
 
       return true;
@@ -160,9 +155,7 @@ class AudioService {
 
   async getBase64Audio(uri: string) {
     try {
-      // Detectar plataforma
       if (Platform.OS === 'web') {
-        // En web, el URI es un blob URL, necesitamos convertirlo
         const response = await fetch(uri);
         const blob = await response.blob();
         
@@ -176,7 +169,6 @@ class AudioService {
           reader.readAsDataURL(blob);
         });
       } else {
-        // En móvil, usar FileSystem legacy
         const base64 = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -188,7 +180,6 @@ class AudioService {
     }
   }
 
-  // Generar tono sintético (beep) - Solo web
   playBeep(frequency: number = 800, duration: number = 100) {
     if (Platform.OS === 'web') {
       try {
@@ -211,8 +202,7 @@ class AudioService {
         console.log('Beep not available:', error);
       }
     } else {
-      // En móvil, usar un sonido corto con expo-av
-      // Por ahora solo hacemos vibración
+      // Implementar sonido en móvil...
       console.log('Beep on mobile - using vibration instead');
     }
   }
@@ -243,7 +233,7 @@ class ConnectionService {
   connect(serverUrl: string) {
     this.serverUrl = serverUrl;
     
-    console.log(`🔌 Connecting to ${serverUrl}...`);
+    console.log(`Connecting to ${serverUrl}...`);
     
     this.socket = io(serverUrl, {
       transports: ['websocket'],
@@ -253,13 +243,13 @@ class ConnectionService {
     });
 
     this.socket.on('connect', () => {
-      console.log('✅ Connected to server');
+      console.log('Connected to server');
       this.isConnected = true;
       this.emit('connection-status', true);
     });
 
     this.socket.on('disconnect', () => {
-      console.log('❌ Disconnected from server');
+      console.log('Disconnected from server');
       this.isConnected = false;
       this.emit('connection-status', false);
     });
@@ -270,22 +260,22 @@ class ConnectionService {
     });
 
     this.socket.on('user-joined', (userId: string) => {
-      console.log(`👤 User joined: ${userId}`);
+      console.log(`User joined: ${userId}`);
       this.emit('user-joined', userId);
     });
 
     this.socket.on('user-left', (userId: string) => {
-      console.log(`👋 User left: ${userId}`);
+      console.log(`User left: ${userId}`);
       this.emit('user-left', userId);
     });
 
     this.socket.on('channel-users', (users: string[]) => {
-      console.log(`👥 Channel users: ${users.length}`);
+      console.log(`Channel users: ${users.length}`);
       this.emit('channel-users', users);
     });
 
     this.socket.on('audio-received', (data: any) => {
-      console.log(`🎧 Audio received from ${data.userId}`);
+      console.log(`Audio received from ${data.userId}`);
       this.emit('audio-received', data);
     });
 
@@ -303,7 +293,7 @@ class ConnectionService {
   joinChannel(channelId: string, userId: string) {
     if (!this.socket || !this.isConnected) return false;
     
-    console.log(`📡 Joining channel ${channelId} as ${userId}`);
+    console.log(`Joining channel ${channelId} as ${userId}`);
     this.socket.emit('join-channel', { channelId, userId });
     return true;
   }
@@ -311,14 +301,14 @@ class ConnectionService {
   leaveChannel(channelId: string, userId: string) {
     if (!this.socket) return;
     
-    console.log(`👋 Leaving channel ${channelId}`);
+    console.log(`Leaving channel ${channelId}`);
     this.socket.emit('leave-channel', { channelId, userId });
   }
 
   sendAudioData(channelId: string, userId: string, audioData: string) {
     if (!this.socket || !this.isConnected) return false;
     
-    console.log(`📤 Sending audio data (${audioData.length} bytes)`);
+    console.log(`Sending audio data (${audioData.length} bytes)`);
     this.socket.emit('audio-data', {
       channelId,
       userId,
@@ -433,13 +423,10 @@ export default function WalkieTalkieScreen() {
           addMessage(data.userId);
           playSound('incoming');
 
-          // Reproducir audio recibido INMEDIATAMENTE
           if (data.audioData) {
-            // No usar await aquí para que sea más rápido
             (async () => {
               try {
                 if (Platform.OS === 'web') {
-                  // En web, convertir base64 a blob y reproducir
                   const byteCharacters = atob(data.audioData);
                   const byteNumbers = new Array(byteCharacters.length);
                   for (let i = 0; i < byteCharacters.length; i++) {
@@ -451,10 +438,8 @@ export default function WalkieTalkieScreen() {
                   
                   await audioService.current.playAudio(audioUrl);
                   
-                  // Limpiar URL después de reproducir
                   setTimeout(() => URL.revokeObjectURL(audioUrl), 5000);
                 } else {
-                  // En móvil, convertir base64 a archivo temporal y reproducir
                   const tempUri = `${FileSystem.cacheDirectory}temp_audio_${Date.now()}.m4a`;
                   await FileSystem.writeAsStringAsync(tempUri, data.audioData, {
                     encoding: FileSystem.EncodingType.Base64,
@@ -470,11 +455,11 @@ export default function WalkieTalkieScreen() {
       });
 
       connectionService.current.on('transmission-start', (data: any) => {
-        console.log(`🔴 ${data.userId} started transmitting`);
+        console.log(`${data.userId} started transmitting`);
       });
 
       connectionService.current.on('transmission-end', (data: any) => {
-        console.log(`⏹️ ${data.userId} stopped transmitting`);
+        console.log(`${data.userId} stopped transmitting`);
       });
 
     } catch (error) {
@@ -510,7 +495,7 @@ export default function WalkieTalkieScreen() {
       }
     }
 
-    // Vibración y feedback háptico para móvil
+    // Vibración para móvil
     if (Platform.OS !== 'web') {
       try {
         if (type === 'push') {
@@ -593,7 +578,6 @@ export default function WalkieTalkieScreen() {
       setTransmissionTime(0);
       playSound('push');
 
-      // Notificar inicio de transmisión
       connectionService.current.notifyTransmissionStart(currentChannel.id, userId);
 
       transmissionTimer.current = setInterval(() => {
@@ -607,7 +591,6 @@ export default function WalkieTalkieScreen() {
   const handlePushEnd = async () => {
     if (!currentChannel || !isPushing) return;
 
-    // Parar grabación
     const audioUri = await audioService.current.stopRecording();
     setIsPushing(false);
     playSound('release');
@@ -617,19 +600,17 @@ export default function WalkieTalkieScreen() {
       transmissionTimer.current = null;
     }
 
-    // Notificar fin de transmisión
     connectionService.current.notifyTransmissionEnd(currentChannel.id, userId);
 
     if (audioUri) {
       console.log('Audio recorded:', audioUri);
       
-      // Convertir y enviar audio inmediatamente (sin esperar)
       (async () => {
         try {
           const base64Audio = await audioService.current.getBase64Audio(audioUri);
           if (base64Audio) {
             connectionService.current.sendAudioData(currentChannel.id, userId, base64Audio);
-            console.log('✅ Audio sent successfully');
+            console.log('Audio sent successfully');
           }
         } catch (error) {
           console.error('Error sending audio:', error);
@@ -639,6 +620,7 @@ export default function WalkieTalkieScreen() {
   };
 
   return (
+    // Reemplazar emojis por iconos...
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
