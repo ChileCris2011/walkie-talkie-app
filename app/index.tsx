@@ -15,6 +15,8 @@ import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import io from 'socket.io-client';
+// Importar iconos de Expo
+import { Ionicons } from '@expo/vector-icons';
 
 // Usar FileSystem legacy para compatibilidad
 const FileSystem = FileSystemLegacy;
@@ -232,7 +234,6 @@ class AudioService {
       const config = configs[type];
       
       if (config.sequence) {
-        // Secuencia de tonos
         config.sequence.forEach((freq, i) => {
           setTimeout(() => this.generateTone(audioContext, freq, 100), i * 150);
         });
@@ -559,10 +560,8 @@ export default function WalkieTalkieScreen() {
 
     console.log(`Playing sound: ${type}`);
 
-    // Reproducir sonido
     audioService.current.playBeepSound(type);
 
-    // Vibración para móvil (también respeta DND)
     if (Platform.OS !== 'web' && !isDND) {
       try {
         if (type === 'push') {
@@ -669,7 +668,6 @@ export default function WalkieTalkieScreen() {
       transmissionTimer.current = null;
     }
 
-    // Notificar fin de transmisión
     connectionService.current.notifyTransmissionEnd(currentChannel.id, userId);
 
     if (audioUri) {
@@ -695,8 +693,9 @@ export default function WalkieTalkieScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Walkie-Talkie</Text>
+          <Ionicons name={isConnected ? 'checkmark-circle' : connectionError ? 'close-circle' : 'alert-circle'} size={14} color="#94a3b8"/>
           <Text style={styles.headerSubtitle}>
-            {isConnected ? '🟢 Conectado' : connectionError ? `🔴 ${connectionError}` : '🟡 Conectando...'}
+            {isConnected ? 'Conectado' : connectionError ? `${connectionError}` : 'Conectando...'}
           </Text>
         </View>
 
@@ -705,21 +704,33 @@ export default function WalkieTalkieScreen() {
             style={[styles.iconButton, dndMode && styles.iconButtonActive]}
             onPress={() => setDndMode(!dndMode)}
           >
-            <Text style={styles.iconText}>{dndMode ? '🔕' : '🔔'}</Text>
+            <Ionicons 
+              name={dndMode ? "notifications-off" : "notifications"} 
+              size={20} 
+              color={"#fff"} 
+            />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.iconButton, muteReceive && styles.iconButtonActive]}
             onPress={() => setMuteReceive(!muteReceive)}
           >
-            <Text style={styles.iconText}>{muteReceive ? '🔇' : '🔊'}</Text>
+            <Ionicons 
+              name={muteReceive ? "volume-mute" : "volume-high"} 
+              size={20} 
+              color={"#fff"} 
+            />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.iconButton, muteSend && styles.iconButtonActive]}
             onPress={() => setMuteSend(!muteSend)}
           >
-            <Text style={styles.iconText}>{muteSend ? '🎤❌' : '🎤'}</Text>
+            <Ionicons 
+              name={muteSend ? "mic-off" : "mic"} 
+              size={20} 
+              color={"#fff"} 
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -731,15 +742,17 @@ export default function WalkieTalkieScreen() {
             <Text style={styles.sectionTitle}>Selecciona un Canal</Text>
             {!isInitialized && (
               <View style={styles.warningBox}>
+                <Ionicons name="warning" size={14} color="#94a3b8" />
                 <Text style={styles.warningText}>
-                  ⚠️ Permisos de micrófono requeridos
+                  Permisos de micrófono requeridos
                 </Text>
               </View>
             )}
             {!isConnected && (
               <View style={[styles.warningBox, { backgroundColor: '#ef4444' }]}>
+                <Ionicons name="close-circle" size={14} color="#94a3b8" />
                 <Text style={styles.warningText}>
-                  🔴 Sin conexión al servidor
+                  Sin conexión al servidor
                 </Text>
                 <Text style={[styles.warningText, { fontSize: 12, marginTop: 4 }]}>
                   Verifica que el servidor esté corriendo en: {SERVER_URL}
@@ -757,7 +770,7 @@ export default function WalkieTalkieScreen() {
                   <Text style={styles.channelName}>{channel.name}</Text>
                   <Text style={styles.channelFreq}>{channel.frequency}</Text>
                 </View>
-                <Text style={styles.channelIcon}>📻</Text>
+                <Ionicons name="radio" size={22} color="#94a3b8" />
               </TouchableOpacity>
             ))}
           </View>
@@ -776,20 +789,27 @@ export default function WalkieTalkieScreen() {
                   style={styles.leaveButton}
                   onPress={leaveChannel}
                 >
+                  <Ionicons name="exit-outline" size={18} color="#fff" style={{ marginRight: 4 }} />
                   <Text style={styles.leaveButtonText}>Salir</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.userCount}>
-                👥 {channelUsers.length + 1} usuario(s) conectado(s)
-              </Text>
+              <View style={styles.userCountContainer}>
+                <Ionicons name="people" size={14} color="#94a3b8" />
+                <Text style={styles.userCount}>
+                  {channelUsers.length + 1} usuario(s) conectado(s)
+                </Text>
+              </View>
             </View>
 
             {/* Activity Feed */}
             <View style={styles.activityFeed}>
-              <Text style={styles.activityTitle}>Actividad Reciente</Text>
+              <View style={styles.activityTitleContainer}>
+                <Ionicons name="list" size={14} color="#94a3b8" />
+                <Text style={styles.activityTitle}>Actividad Reciente</Text>
+              </View>
               {recentMessages.length === 0 ? (
                 <View style={styles.emptyActivity}>
-                  <Text style={styles.emptyIcon}>📻</Text>
+                  <Ionicons name="radio-outline" size={48} color="#64748b" style={{ opacity: 0.5, marginBottom: 8 }} />
                   <Text style={styles.emptyText}>Esperando transmisiones...</Text>
                   <Text style={styles.emptyHint}>
                     Mantén presionado el botón para hablar
@@ -813,7 +833,7 @@ export default function WalkieTalkieScreen() {
                           {new Date(msg.timestamp).toLocaleTimeString()}
                         </Text>
                       </View>
-                      <Text style={styles.messageIcon}>🔊</Text>
+                      <Ionicons name="volume-high" size={16} color="#3b82f6" />
                     </View>
                   ))}
                 </ScrollView>
@@ -838,7 +858,7 @@ export default function WalkieTalkieScreen() {
                 disabled={muteSend}
                 activeOpacity={0.8}
               >
-                <Text style={styles.pttIcon}>🎤</Text>
+                <Ionicons name="mic" size={32} color="#94a3b8" />
                 <Text style={styles.pttText}>
                   {muteSend
                     ? 'MUTE'
@@ -860,10 +880,36 @@ export default function WalkieTalkieScreen() {
 
       {/* Status Bar */}
       <View style={styles.statusBar}>
-        <Text style={styles.statusText}>
-          {dndMode ? '🔕 DND' : '🔔'} | {muteReceive ? '🔇' : '🔊'} | ID:{' '}
-          {userId.slice(0, 8)}
-        </Text>
+        <View style={styles.statusBarContent}>
+          <View style={styles.statusItem}>
+            <Ionicons 
+              name={dndMode ? "notifications-off" : "notifications"} 
+              size={12} 
+              color={dndMode ? "#ef4444" : "#94a3b8"} 
+            />
+            <Text style={[styles.statusText, dndMode && { color: '#ef4444' }]}>
+              {dndMode ? 'DND' : 'Normal'}
+            </Text>
+          </View>
+          
+          <View style={styles.statusItem}>
+            <Ionicons 
+              name={muteReceive ? "volume-mute" : "volume-high"} 
+              size={12} 
+              color={muteReceive ? "#ef4444" : "#94a3b8"} 
+            />
+            <Text style={[styles.statusText, muteReceive && { color: '#ef4444' }]}>
+              {muteReceive ? 'Mute' : 'Audio'}
+            </Text>
+          </View>
+          
+          <View style={styles.statusItem}>
+            <Ionicons name="finger-print" size={12} color="#94a3b8" />
+            <Text style={styles.statusText}>
+              {userId.slice(0, 8)}
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -921,17 +967,24 @@ const styles = StyleSheet.create({
   channelList: {
     gap: 12,
   },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 16,
   },
   warningBox: {
     padding: 12,
     backgroundColor: '#fbbf24',
     borderRadius: 8,
     marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   warningText: {
     color: '#000',
@@ -957,9 +1010,6 @@ const styles = StyleSheet.create({
   channelFreq: {
     fontSize: 14,
     color: '#94a3b8',
-  },
-  channelIcon: {
-    fontSize: 24,
   },
   channelView: {
     flex: 1,
@@ -992,10 +1042,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: '#ef4444',
     borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   leaveButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  userCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   userCount: {
     fontSize: 14,
@@ -1010,21 +1067,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     minHeight: 200,
   },
+  activityTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
   activityTitle: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#94a3b8',
-    marginBottom: 12,
   },
   emptyActivity: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 32,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    opacity: 0.5,
-    marginBottom: 8,
   },
   emptyText: {
     color: '#64748b',
@@ -1064,9 +1121,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94a3b8',
   },
-  messageIcon: {
-    fontSize: 16,
-  },
   pttContainer: {
     alignItems: 'center',
     paddingVertical: 24,
@@ -1098,10 +1152,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     opacity: 0.5,
   },
-  pttIcon: {
-    fontSize: 64,
-    marginBottom: 12,
-  },
   pttText: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -1131,9 +1181,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#334155',
   },
+  statusBarContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  statusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   statusText: {
     fontSize: 12,
     color: '#94a3b8',
-    textAlign: 'center',
   },
 });
