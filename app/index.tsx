@@ -16,12 +16,13 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import io from 'socket.io-client';
 
+// Usar FileSystem legacy para compatibilidad
 const FileSystem = FileSystemLegacy;
 
 // CONFIGURA TU SERVIDOR AQUÍ
 // Para desarrollo local, reemplaza con tu IP local (ej: http://192.168.1.100:3000)
 // Para producción, usa tu URL de servidor (ej: https://tu-servidor.railway.app)
-const SERVER_URL = 'https://localhost:3000'; // Por defecto
+const SERVER_URL = 'https://walkie-server-ov27.onrender.com'; // Por defecto
 
 const CHANNELS = [
   { id: '1', name: 'Canal 1', frequency: '462.5625 MHz' },
@@ -38,6 +39,15 @@ class AudioService {
   isRecording: boolean = false;
   recordingInterval: any = null;
   onAudioChunk: ((chunk: string) => void) | null = null;
+  
+  // Pre-cargar sonidos
+  sounds: {
+    push?: Audio.Sound;
+    release?: Audio.Sound;
+    incoming?: Audio.Sound;
+    join?: Audio.Sound;
+    leave?: Audio.Sound;
+  } = {};
 
   async initialize() {
     try {
@@ -54,11 +64,27 @@ class AudioService {
         playThroughEarpieceAndroid: false,
       });
 
+      // Pre-cargar sonidos para móvil
       if (Platform.OS !== 'web') {
         try {
-          // Implementar sonidos en móvil...
+          const soundFiles = {
+            push: require('../assets/sounds/push.m4a'),
+            release: require('../assets/sounds/release.wav'),
+            incoming: require('../assets/sounds/incoming.wav'),
+            join: require('../assets/sounds/join.wav'),
+            leave: require('../assets/sounds/leave.wav'),
+          };
+
+          for (const [key, file] of Object.entries(soundFiles)) {
+            try {
+              const { sound } = await Audio.Sound.createAsync(file, { volume: 0.8 });
+              this.sounds[key as keyof typeof this.sounds] = sound;
+            } catch (e) {
+              console.log(`Could not load sound: ${key}`);
+            }
+          }
         } catch (e) {
-          console.log('Beep sounds not available');
+          console.log(`Sound files not found - using fallback (${e})`);
         }
       }
 
@@ -104,10 +130,6 @@ class AudioService {
 
       await this.recording.startAsync();
       this.isRecording = true;
-
-      if (Platform.OS === 'web' && onChunk) {
-        // Implementar sonido por partes...
-      }
 
       return true;
     } catch (error) {
@@ -180,31 +202,77 @@ class AudioService {
     }
   }
 
-  playBeep(frequency: number = 800, duration: number = 100) {
+  // Reproducir sonido pre-cargado o generar beep
+  async playBeepSound(type: 'push' | 'release' | 'incoming' | 'join' | 'leave') {
     if (Platform.OS === 'web') {
-      try {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.value = frequency;
-        oscillator.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration / 1000);
-      } catch (error) {
-        console.log('Beep not available:', error);
-      }
+      // En web, generar tono sintético
+      console.log(`Playing web beep`);
+      this.playBeep(type);
     } else {
-      // Implementar sonido en móvil...
-      console.log('Beep on mobile - using vibration instead');
+      // En móvil, reproducir sonido pre-cargado
+      const sound = this.sounds[type];
+      if (sound) {
+        try {
+          await sound.replayAsync();
+          console.log(`Playing ${type}`);
+        } catch (error) {
+          console.log(`Could not play ${type} sound:`, error);
+        }
+      } else {
+      	console.log(`Unknow error playing sound`);
+      }
     }
+  }
+
+  // Generar tono sintético (beep) - Solo web
+  playBeep(type: 'push' | 'release' | 'incoming' | 'join' | 'leave') {
+    if (Platform.OS !== 'web') return;
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      const configs = {
+        push: { frequency: 800, duration: 100 },
+        release: { frequency: 600, duration: 80 },
+        incoming: { frequency: 1000, duration: 50, double: true },
+        join: { frequency: 600, duration: 100, sequence: [600, 900] },
+        leave: { frequency: 900, duration: 100, sequence: [900, 600] },
+      };
+
+      const config = configs[type];
+      
+      if (config.sequence) {
+        // Secuencia de tonos
+        config.sequence.forEach((freq, i) => {
+          setTimeout(() => this.generateTone(audioContext, freq, 100), i * 150);
+        });
+      } else if (config.double) {
+        // Doble beep
+        this.generateTone(audioContext, config.frequency, config.duration);
+        setTimeout(() => this.generateTone(audioContext, 1200, config.duration), 100);
+      } else {
+        // Tono simple
+        this.generateTone(audioContext, config.frequency, config.duration);
+      }
+    } catch (error) {
+      console.log('Beep not available:', error);
+    }
+  }
+
+  generateTone(audioContext: AudioContext, frequency: number, duration: number) {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration / 1000);
   }
 
   cleanup() {
@@ -217,6 +285,10 @@ class AudioService {
     if (this.beepSound) {
       this.beepSound.unloadAsync();
     }
+    // Limpiar sonidos pre-cargados
+    Object.values(this.sounds).forEach(sound => {
+      if (sound) sound.unloadAsync();
+    });
     if (this.recordingInterval) {
       clearInterval(this.recordingInterval);
     }
@@ -423,10 +495,13 @@ export default function WalkieTalkieScreen() {
           addMessage(data.userId);
           playSound('incoming');
 
+          // Reproducir audio recibido INMEDIATAMENTE
           if (data.audioData) {
+            // No usar await aquí para que sea más rápido
             (async () => {
               try {
                 if (Platform.OS === 'web') {
+                  // En web, convertir base64 a blob y reproducir
                   const byteCharacters = atob(data.audioData);
                   const byteNumbers = new Array(byteCharacters.length);
                   for (let i = 0; i < byteCharacters.length; i++) {
@@ -438,8 +513,10 @@ export default function WalkieTalkieScreen() {
                   
                   await audioService.current.playAudio(audioUrl);
                   
+                  // Limpiar URL después de reproducir
                   setTimeout(() => URL.revokeObjectURL(audioUrl), 5000);
                 } else {
+                  // En móvil, convertir base64 a archivo temporal y reproducir
                   const tempUri = `${FileSystem.cacheDirectory}temp_audio_${Date.now()}.m4a`;
                   await FileSystem.writeAsStringAsync(tempUri, data.audioData, {
                     encoding: FileSystem.EncodingType.Base64,
@@ -468,35 +545,18 @@ export default function WalkieTalkieScreen() {
     }
   };
 
-  const playSound = (type: string) => {
-    if (dndMode && type === 'incoming') return;
-
-    // Tonos para web
-    if (Platform.OS === 'web') {
-      switch(type) {
-        case 'push':
-          audioService.current.playBeep(800, 100);
-          break;
-        case 'release':
-          audioService.current.playBeep(600, 80);
-          break;
-        case 'incoming':
-          audioService.current.playBeep(1000, 50);
-          setTimeout(() => audioService.current.playBeep(1200, 50), 100);
-          break;
-        case 'join':
-          audioService.current.playBeep(600, 100);
-          setTimeout(() => audioService.current.playBeep(900, 100), 150);
-          break;
-        case 'leave':
-          audioService.current.playBeep(900, 100);
-          setTimeout(() => audioService.current.playBeep(600, 100), 150);
-          break;
-      }
+  const playSound = (type: 'push' | 'release' | 'incoming' | 'join' | 'leave') => {
+    console.log(dndMode ? 'DND on' : 'DND Off');
+    if (dndMode) {
+    	console.log('DND mode active, skiping sound');
+    	return;
     }
+    
+    if (muteReceive && (type === 'incoming')) return;
 
-    // Vibración para móvil
-    if (Platform.OS !== 'web') {
+    audioService.current.playBeepSound(type);
+
+    if (Platform.OS !== 'web' && !dndMode) {
       try {
         if (type === 'push') {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -505,8 +565,10 @@ export default function WalkieTalkieScreen() {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           Vibration.vibrate(50);
         } else if (type === 'incoming') {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Vibration.vibrate([100, 50, 100]);
+          if (!muteReceive) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Vibration.vibrate([100, 50, 100]);
+          }
         } else if (type === 'join') {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           Vibration.vibrate([100, 50, 100]);
@@ -578,6 +640,7 @@ export default function WalkieTalkieScreen() {
       setTransmissionTime(0);
       playSound('push');
 
+      // Notificar inicio de transmisión
       connectionService.current.notifyTransmissionStart(currentChannel.id, userId);
 
       transmissionTimer.current = setInterval(() => {
@@ -591,6 +654,7 @@ export default function WalkieTalkieScreen() {
   const handlePushEnd = async () => {
     if (!currentChannel || !isPushing) return;
 
+    // Parar grabación
     const audioUri = await audioService.current.stopRecording();
     setIsPushing(false);
     playSound('release');
@@ -600,11 +664,13 @@ export default function WalkieTalkieScreen() {
       transmissionTimer.current = null;
     }
 
+    // Notificar fin de transmisión
     connectionService.current.notifyTransmissionEnd(currentChannel.id, userId);
 
     if (audioUri) {
       console.log('Audio recorded:', audioUri);
       
+      // Convertir y enviar audio inmediatamente (sin esperar)
       (async () => {
         try {
           const base64Audio = await audioService.current.getBase64Audio(audioUri);
@@ -620,7 +686,6 @@ export default function WalkieTalkieScreen() {
   };
 
   return (
-    // Reemplazar emojis por iconos...
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
