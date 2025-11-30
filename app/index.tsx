@@ -1,4 +1,4 @@
-// app/(tabs)/index.tsx
+// app/index.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
@@ -22,7 +22,7 @@ const FileSystem = FileSystemLegacy;
 // CONFIGURA TU SERVIDOR AQUÍ
 // Para desarrollo local, reemplaza con tu IP local (ej: http://192.168.1.100:3000)
 // Para producción, usa tu URL de servidor (ej: https://tu-servidor.railway.app)
-const SERVER_URL = 'https://walkie-server-ov27.onrender.com'; // Por defecto
+const SERVER_URL = 'http://localhost:3000'; // Por defecto
 
 const CHANNELS = [
   { id: '1', name: 'Canal 1', frequency: '462.5625 MHz' },
@@ -40,7 +40,6 @@ class AudioService {
   recordingInterval: any = null;
   onAudioChunk: ((chunk: string) => void) | null = null;
   
-  // Pre-cargar sonidos
   sounds: {
     push?: Audio.Sound;
     release?: Audio.Sound;
@@ -64,7 +63,6 @@ class AudioService {
         playThroughEarpieceAndroid: false,
       });
 
-      // Pre-cargar sonidos para móvil
       if (Platform.OS !== 'web') {
         try {
           const soundFiles = {
@@ -202,31 +200,24 @@ class AudioService {
     }
   }
 
-  // Reproducir sonido pre-cargado o generar beep
   async playBeepSound(type: 'push' | 'release' | 'incoming' | 'join' | 'leave') {
     if (Platform.OS === 'web') {
-      // En web, generar tono sintético
-      console.log(`Playing web beep`);
       this.playBeep(type);
     } else {
-      // En móvil, reproducir sonido pre-cargado
       const sound = this.sounds[type];
       if (sound) {
         try {
           await sound.replayAsync();
-          console.log(`Playing ${type}`);
         } catch (error) {
           console.log(`Could not play ${type} sound:`, error);
         }
-      } else {
-      	console.log(`Unknow error playing sound`);
       }
     }
   }
 
-  // Generar tono sintético (beep) - Solo web
   playBeep(type: 'push' | 'release' | 'incoming' | 'join' | 'leave') {
     if (Platform.OS !== 'web') return;
+
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
@@ -246,11 +237,9 @@ class AudioService {
           setTimeout(() => this.generateTone(audioContext, freq, 100), i * 150);
         });
       } else if (config.double) {
-        // Doble beep
         this.generateTone(audioContext, config.frequency, config.duration);
         setTimeout(() => this.generateTone(audioContext, 1200, config.duration), 100);
       } else {
-        // Tono simple
         this.generateTone(audioContext, config.frequency, config.duration);
       }
     } catch (error) {
@@ -285,7 +274,6 @@ class AudioService {
     if (this.beepSound) {
       this.beepSound.unloadAsync();
     }
-    // Limpiar sonidos pre-cargados
     Object.values(this.sounds).forEach(sound => {
       if (sound) sound.unloadAsync();
     });
@@ -432,9 +420,20 @@ export default function WalkieTalkieScreen() {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
+  const dndModeRef = useRef(dndMode);
+  const muteReceiveRef = useRef(muteReceive);
+  
   const audioService = useRef(new AudioService());
   const connectionService = useRef(new ConnectionService());
   const transmissionTimer = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    dndModeRef.current = dndMode;
+  }, [dndMode]);
+
+  useEffect(() => {
+    muteReceiveRef.current = muteReceive;
+  }, [muteReceive]);
 
   useEffect(() => {
     initializeApp();
@@ -447,7 +446,6 @@ export default function WalkieTalkieScreen() {
   }, []);
 
   const initializeApp = async () => {
-    // Inicializar audio
     const audioInit = await audioService.current.initialize();
     setIsInitialized(audioInit);
 
@@ -460,11 +458,9 @@ export default function WalkieTalkieScreen() {
       return;
     }
 
-    // Conectar al servidor
     try {
       connectionService.current.connect(SERVER_URL);
 
-      // Configurar listeners
       connectionService.current.on('connection-status', (connected: boolean) => {
         setIsConnected(connected);
         if (connected) {
@@ -491,17 +487,19 @@ export default function WalkieTalkieScreen() {
       });
 
       connectionService.current.on('audio-received', async (data: any) => {
-        if (!dndMode && !muteReceive) {
+        const isDND = dndModeRef.current;
+        const isMuted = muteReceiveRef.current;
+        
+        console.log('Audio received - DND:', isDND, 'Muted:', isMuted);
+        
+        if (!isDND && !isMuted) {
           addMessage(data.userId);
           playSound('incoming');
 
-          // Reproducir audio recibido INMEDIATAMENTE
           if (data.audioData) {
-            // No usar await aquí para que sea más rápido
             (async () => {
               try {
                 if (Platform.OS === 'web') {
-                  // En web, convertir base64 a blob y reproducir
                   const byteCharacters = atob(data.audioData);
                   const byteNumbers = new Array(byteCharacters.length);
                   for (let i = 0; i < byteCharacters.length; i++) {
@@ -513,10 +511,8 @@ export default function WalkieTalkieScreen() {
                   
                   await audioService.current.playAudio(audioUrl);
                   
-                  // Limpiar URL después de reproducir
                   setTimeout(() => URL.revokeObjectURL(audioUrl), 5000);
                 } else {
-                  // En móvil, convertir base64 a archivo temporal y reproducir
                   const tempUri = `${FileSystem.cacheDirectory}temp_audio_${Date.now()}.m4a`;
                   await FileSystem.writeAsStringAsync(tempUri, data.audioData, {
                     encoding: FileSystem.EncodingType.Base64,
@@ -528,6 +524,8 @@ export default function WalkieTalkieScreen() {
               }
             })();
           }
+        } else {
+          console.log('Audio blocked by DND/Mute');
         }
       });
 
@@ -546,17 +544,26 @@ export default function WalkieTalkieScreen() {
   };
 
   const playSound = (type: 'push' | 'release' | 'incoming' | 'join' | 'leave') => {
-    console.log(dndMode ? 'DND on' : 'DND Off');
-    if (dndMode) {
-    	console.log('DND mode active, skiping sound');
-    	return;
+    const isDND = dndModeRef.current;
+    const isMuted = muteReceiveRef.current;
+    
+    if (isDND && type !== 'push' && type !== 'release') {
+      console.log(`Sound blocked by DND: ${type}`);
+      return;
     }
     
-    if (muteReceive && (type === 'incoming')) return;
+    if (isMuted && type === 'incoming') {
+      console.log(`Sound blocked by Mute: ${type}`);
+      return;
+    }
 
+    console.log(`Playing sound: ${type}`);
+
+    // Reproducir sonido
     audioService.current.playBeepSound(type);
 
-    if (Platform.OS !== 'web' && !dndMode) {
+    // Vibración para móvil (también respeta DND)
+    if (Platform.OS !== 'web' && !isDND) {
       try {
         if (type === 'push') {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -565,7 +572,7 @@ export default function WalkieTalkieScreen() {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           Vibration.vibrate(50);
         } else if (type === 'incoming') {
-          if (!muteReceive) {
+          if (!isMuted) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             Vibration.vibrate([100, 50, 100]);
           }
@@ -640,7 +647,6 @@ export default function WalkieTalkieScreen() {
       setTransmissionTime(0);
       playSound('push');
 
-      // Notificar inicio de transmisión
       connectionService.current.notifyTransmissionStart(currentChannel.id, userId);
 
       transmissionTimer.current = setInterval(() => {
@@ -654,7 +660,6 @@ export default function WalkieTalkieScreen() {
   const handlePushEnd = async () => {
     if (!currentChannel || !isPushing) return;
 
-    // Parar grabación
     const audioUri = await audioService.current.stopRecording();
     setIsPushing(false);
     playSound('release');
@@ -670,7 +675,6 @@ export default function WalkieTalkieScreen() {
     if (audioUri) {
       console.log('Audio recorded:', audioUri);
       
-      // Convertir y enviar audio inmediatamente (sin esperar)
       (async () => {
         try {
           const base64Audio = await audioService.current.getBase64Audio(audioUri);
