@@ -1,19 +1,62 @@
 {
   "expo": {
     "name": "Walkie-Talkie",
-    "slug": "walkie-talkie-app",
+    "slug": "walkie-talkie",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-foreground.png",
+          "color": "#3b82f6",
+          "sounds": [
+            "./assets/sounds/leave.wav"
+          ]
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourapp.walkietalkie",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ],
+        "NSMicrophoneUsageDescription": "Necesitamos acceso al micrófono para el walkie-talkie",
+        "NSCameraUsageDescription": "Necesario para WebRTC"
+      }
+    },
     "android": {
-      "package": "com.walkietalkie.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.yourapp.walkietalkie",
       "permissions": [
+        "INTERNET",
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
-        "VIBRATE",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA"
       ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0f157f88-fd31-4509-8763-da38dec1d9ee"
+      }
     }
   }
 }
