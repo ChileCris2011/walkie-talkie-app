@@ -2,62 +2,18 @@
   "expo": {
     "name": "Walkie-Talkie",
     "slug": "walkie-talkie-app",
-    "version": "3.0.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0f172a"
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.walkietalkie.app",
-      "buildNumber": "3.0.0",
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Esta app necesita acceso al micrófono para transmitir audio.",
-        "UIBackgroundModes": [
-          "audio"
-        ]
-      }
-    },
     "android": {
       "package": "com.walkietalkie.app",
       "permissions": [
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
         "VIBRATE",
-        "WAKE_LOCK",
-        "INTERNET",
-        "ACCESS_NETWORK_STATE",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ],
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0f172a"
-      }
-    },
-    "web": {
-      "favicon": "./assets/favicon.png",
-      "bundler": "metro"
-    },
-    "plugins": [
-      [
-        "expo-av",
-        {
-          "microphonePermission": "Permite a $(PRODUCT_NAME) acceder a tu micrófono para transmitir audio."
-        }
+        "WAKE_LOCK"
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "9dba4810-47b0-47e0-8ced-705cdf9bab7c"
-      }
     }
   }
 }
