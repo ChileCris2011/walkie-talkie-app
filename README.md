@@ -3,8 +3,8 @@
 Ésta es una aplicación Walkie-Talkie multi plataforma (Android, IOS, Web) basada en react.  
 
   
-Advertencia: La rama `testing` es usada para hacer diversos testeos de nuevas funcionalidades. Si quieres colaborar,  
-puedes usar ésta rama **a tu propio riesgo**, enviando tus sugerencias a través de [issues](https://github.com/ChileCris2011/walkie-talkie-app/issues/new?labels=development)
+Advertencia: La rama `testing` es usada para hacer diversos testeos de nuevas funcionalidades. Si quieres colaborar, puedes usar ésta rama **a tu propio riesgo**, enviando tus sugerencias a través de [issues](https://github.com/ChileCris2011/walkie-talkie-app/issues/new?labels=development).  
+Si quieres la última versión estable, usa la rama [secure](https://github.com/ChileCris2011/walkie-talkie-app/tree/secure) o usa el código fuente de los [releases](https://github.com/ChileCris2011/walkie-talkie-app/releases)
 
 ## Cómo usar
 
