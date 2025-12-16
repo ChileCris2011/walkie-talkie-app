@@ -1,6 +1,10 @@
-# Walkie Talkie App
+# Walkie Talkie App (Testing)
 
-Ésta es una aplicación Walkie-Talkie multi plataforma (Android, IOS, Web) basada en react.
+Ésta es una aplicación Walkie-Talkie multi plataforma (Android, IOS, Web) basada en react.  
+
+  
+Advertencia: La rama `testing` es usada para hacer diversos testeos de nuevas funcionalidades. Si quieres colaborar,  
+puedes usar ésta rama **a tu propio riesgo**, enviando tus sugerencias a través de [issues](https://github.com/ChileCris2011/walkie-talkie-app/issues/new?labels=development)
 
 ## Cómo usar
 
